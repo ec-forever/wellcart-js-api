@@ -13,6 +13,8 @@ const normalizeString = (value) =>
   typeof value === 'string' ? value.trim() : '';
 
 const pickTitle = (recipe) => normalizeString(recipe.title ?? recipe.Title ?? '');
+const pickShoppingTitle = (body) =>
+  normalizeString(body?.shopping_title ?? body?.shoppingTitle ?? body?.title ?? body?.Title ?? '');
 
 const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
@@ -105,6 +107,8 @@ export default async function handler(request) {
     });
   }
 
+  const shoppingListTitle = pickShoppingTitle(body);
+
   let recipeId = 1;
   const recipes = [];
   for (const recipe of body.recipes) {
@@ -141,6 +145,7 @@ export default async function handler(request) {
   const shoppingItemsMerged = buildMergedItems(lineItemsFlat);
 
   const responsePayload = {
+    shopping_list_title: shoppingListTitle,
     recipes_clean: recipesClean,
     line_items_flat: lineItemsFlat,
     shopping_items_merged: shoppingItemsMerged,
