@@ -15,8 +15,8 @@ test('normalizes shopping payload with description and instructions metadata', a
           'Toss with chopped vegetables and dressing.  ',
         ],
         line_items: [
-          { name: 'Chickpeas', quantity: '2', unit: 'cups' },
-          { Name: 'Lemon', Quantity: 1, Unit: 'EA' },
+          { name: 'Chickpeas', quantity: '2', unit: 'cups', price: '1.5' },
+          { Name: 'Lemon', Quantity: 1, Unit: 'EA', Price: 0.89 },
         ],
       },
       {
@@ -24,7 +24,7 @@ test('normalizes shopping payload with description and instructions metadata', a
         Description: 'Spiced chicken with garlic sauce.',
         Instructions: '  Roast chicken, slice, and assemble in warm pitas.  ',
         ingredients: [
-          { name: 'Lemon', quantity: 1, unit: 'ea' },
+          { name: 'Lemon', quantity: 1, unit: 'ea', price: 0.79 },
         ],
       },
     ],
@@ -61,14 +61,14 @@ test('normalizes shopping payload with description and instructions metadata', a
   ]);
 
   assert.deepEqual(body.line_items_flat, [
-    { recipe_id: 1, name: 'Chickpeas', quantity: 2, unit: 'cups' },
-    { recipe_id: 1, name: 'Lemon', quantity: 1, unit: 'ea' },
-    { recipe_id: 2, name: 'Lemon', quantity: 1, unit: 'ea' },
+    { recipe_id: 1, name: 'Chickpeas', quantity: 2, unit: 'cups', price: 1.5 },
+    { recipe_id: 1, name: 'Lemon', quantity: 1, unit: 'ea', price: 0.89 },
+    { recipe_id: 2, name: 'Lemon', quantity: 1, unit: 'ea', price: 0.79 },
   ]);
 
   assert.deepEqual(body.shopping_items_merged, [
-    { name: 'Chickpeas', quantity: 2, unit: 'cups' },
-    { name: 'Lemon', quantity: 2, unit: 'ea' },
+    { name: 'Chickpeas', quantity: 2, unit: 'cups', price: 1.5 },
+    { name: 'Lemon', quantity: 2, unit: 'ea', price: 1.68 },
   ]);
 });
 

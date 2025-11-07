@@ -38,8 +38,15 @@ const normalizeLineItem = (item) => {
   const unitNormalized = normalizeString(item.unit ?? item.Unit ?? '');
   const unit = unitNormalized ? unitNormalized.toLowerCase() : '';
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+  const price = Number(item.price ?? item.Price ?? 0);
 
-  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) {
+  if (
+    !name ||
+    Number.isNaN(quantity) ||
+    !Number.isFinite(quantity) ||
+    Number.isNaN(price) ||
+    !Number.isFinite(price)
+  ) {
     return null;
   }
 
@@ -47,6 +54,7 @@ const normalizeLineItem = (item) => {
     name,
     unit,
     quantity,
+    price,
   };
 };
 
@@ -66,9 +74,11 @@ const buildMergedItems = (lineItems) => {
     if (merged.has(key)) {
       const existing = merged.get(key);
       existing.quantity += item.quantity;
+      existing.price += item.price;
+      existing.price = Number(existing.price.toFixed(10));
     } else {
-      const { name, unit, quantity } = item;
-      merged.set(key, { name, unit, quantity });
+      const { name, unit, quantity, price } = item;
+      merged.set(key, { name, unit, quantity, price });
     }
   }
 
