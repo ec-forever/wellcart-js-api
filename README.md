@@ -2,7 +2,8 @@
 
 A lightweight Vercel Edge Function that normalizes a meal plan JSON payload into:
 
-- `recipes_clean`: an array of recipes with assigned `recipe_id` values
+- `shopping_list_title`: the normalized plan title to display alongside shopping data
+- `recipes_clean`: an array of recipes with assigned `recipe_id`, optional `description`, and optional `instructions` values
 - `line_items_flat`: a flattened list of all ingredients including a `recipe_id` reference
 - `shopping_items_merged`: a deduplicated shopping list with summed quantities per ingredient/unit
 
@@ -12,7 +13,7 @@ Deploy the repository to Vercel. The default export in `api/index.js` is configu
 
 ## Usage
 
-Send a `POST` request containing a `recipes` array. Each recipe should include a `title` (or `Title`) and `line_items` (or `ingredients`) array with objects containing `name`, `quantity`, and `unit` fields.
+Send a `POST` request containing a `recipes` array. Each recipe should include a `title` (or `Title`) and `line_items` (or `ingredients`) array with objects containing `name`, `quantity`, and `unit` fields. The top-level payload may include a `shopping_title`, `shoppingTitle`, or `title` value for the returned `shopping_list_title`.
 
 ```json
 {
@@ -20,6 +21,11 @@ Send a `POST` request containing a `recipes` array. Each recipe should include a
   "recipes": [
     {
       "Title": "Chickpea Salad",
+      "description": "A bright, protein-packed lunch.",
+      "instructions": [
+        "Drain and rinse chickpeas.",
+        "Toss with chopped vegetables and dressing."
+      ],
       "line_items": [
         { "name": "Lemon", "quantity": 1, "unit": "ea" },
         { "name": "Chickpeas", "quantity": 2, "unit": "cups" }
@@ -27,6 +33,8 @@ Send a `POST` request containing a `recipes` array. Each recipe should include a
     },
     {
       "Title": "Shawarma Wraps",
+      "Description": "Spiced chicken with garlic sauce.",
+      "Instructions": "Roast chicken, slice, and assemble in warm pitas.",
       "line_items": [
         { "name": "Lemon", "quantity": 1, "unit": "ea" }
       ]
@@ -39,9 +47,23 @@ Send a `POST` request containing a `recipes` array. Each recipe should include a
 
 ```json
 {
+  "shopping_list_title": "Plan",
   "recipes_clean": [
-    { "recipe_id": 1, "title": "Chickpea Salad" },
-    { "recipe_id": 2, "title": "Shawarma Wraps" }
+    {
+      "recipe_id": 1,
+      "title": "Chickpea Salad",
+      "description": "A bright, protein-packed lunch.",
+      "instructions": [
+        "Drain and rinse chickpeas.",
+        "Toss with chopped vegetables and dressing."
+      ]
+    },
+    {
+      "recipe_id": 2,
+      "title": "Shawarma Wraps",
+      "description": "Spiced chicken with garlic sauce.",
+      "instructions": "Roast chicken, slice, and assemble in warm pitas."
+    }
   ],
   "line_items_flat": [
     { "recipe_id": 1, "name": "Lemon", "quantity": 1, "unit": "ea" },
