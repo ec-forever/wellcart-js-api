@@ -72,6 +72,36 @@ test('normalizes shopping payload with description and instructions metadata', a
   ]);
 });
 
+test('handles payload provided as a JSON string body', async () => {
+  const payload = {
+    title: 'String Plan',
+    recipes: [
+      {
+        title: 'Test Recipe',
+        line_items: [{ name: 'Item', quantity: 1, unit: 'ea', price: 2.5 }],
+      },
+    ],
+  };
+
+  const request = new Request('https://example.com/api', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(JSON.stringify(payload)),
+  });
+
+  const response = await handler(request);
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.equal(body.shopping_list_title, 'String Plan');
+  assert.deepEqual(body.recipes_clean, [
+    { recipe_id: 1, title: 'Test Recipe' },
+  ]);
+  assert.deepEqual(body.line_items_flat, [
+    { recipe_id: 1, name: 'Item', quantity: 1, unit: 'ea', price: 2.5 },
+  ]);
+});
+
 test('rejects unsupported methods and invalid payloads', async () => {
   const getResponse = await handler(new Request('https://example.com/api', { method: 'GET' }));
   assert.equal(getResponse.status, 405);

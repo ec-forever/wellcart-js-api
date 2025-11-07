@@ -60,7 +60,19 @@ const normalizeLineItem = (item) => {
 
 const parseBody = async (request) => {
   try {
-    return await request.json();
+    const rawText = await request.text();
+
+    if (!rawText) {
+      return null;
+    }
+
+    let parsed = JSON.parse(rawText);
+
+    if (typeof parsed === 'string') {
+      parsed = JSON.parse(parsed);
+    }
+
+    return parsed;
   } catch (error) {
     return null;
   }

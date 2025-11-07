@@ -13,7 +13,7 @@ Deploy the repository to Vercel. The default export in `api/index.js` is configu
 
 ## Usage
 
-Send a `POST` request containing a `recipes` array. Each recipe should include a `title` (or `Title`) and `line_items` (or `ingredients`) array with objects containing `name`, `quantity`, `unit`, and `price` fields. The top-level payload may include a `shopping_title`, `shoppingTitle`, or `title` value for the returned `shopping_list_title`.
+Send a `POST` request containing a `recipes` array. Each recipe should include a `title` (or `Title`) and `line_items` (or `ingredients`) array with objects containing `name`, `quantity`, `unit`, and `price` fields. The top-level payload may include a `shopping_title`, `shoppingTitle`, or `title` value for the returned `shopping_list_title`. Bodies encoded as either JSON objects or stringified JSON are accepted.
 
 ```json
 {
