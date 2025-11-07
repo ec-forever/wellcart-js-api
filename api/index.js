@@ -35,7 +35,8 @@ const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
   const name = normalizeString(item.name ?? item.Name ?? '');
-  const unit = normalizeString(item.unit ?? item.Unit ?? '');
+  const unitNormalized = normalizeString(item.unit ?? item.Unit ?? '');
+  const unit = unitNormalized ? unitNormalized.toLowerCase() : '';
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
 
   if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) {
