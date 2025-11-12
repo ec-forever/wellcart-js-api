@@ -54,23 +54,23 @@ const normalizeLineItem = (item) => {
   const name = normalizeString(item.name ?? item.Name ?? '');
   const unit = normalizeString(item.unit ?? item.Unit ?? '').toLowerCase();
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
-  const price = Number(item.price ?? item.Price ?? 0);
+  const estimated_pricing = Number(
+    item['estimated pricing'] ?? item.estimated_pricing ?? item.Price ?? 0
+  );
+  const Category = normalizeString(item.Category ?? item.category ?? '');
+  const filters = isObject(item.filters)
+    ? item.filters
+    : { health_filters: [] };
 
-  if (
-    !name ||
-    Number.isNaN(quantity) ||
-    !Number.isFinite(quantity) ||
-    Number.isNaN(price) ||
-    !Number.isFinite(price)
-  ) {
-    return null;
-  }
+  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) return null;
 
   return {
     name,
-    unit,
     quantity,
-    price,
+    'estimated pricing': estimated_pricing,
+    unit,
+    Category,
+    filters,
   };
 };
 
@@ -106,11 +106,12 @@ const buildMergedItems = (lineItems) => {
     if (merged.has(key)) {
       const existing = merged.get(key);
       existing.quantity += item.quantity;
-      existing.price += item.price;
-      existing.price = Number(existing.price.toFixed(10));
+      existing['estimated pricing'] += item['estimated pricing'];
+      existing['estimated pricing'] = Number(
+        existing['estimated pricing'].toFixed(10)
+      );
     } else {
-      const { name, unit, quantity, price } = item;
-      merged.set(key, { name, unit, quantity, price });
+      merged.set(key, { ...item });
     }
   }
 
