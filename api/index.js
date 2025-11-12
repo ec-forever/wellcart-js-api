@@ -35,9 +35,12 @@ const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
   const name = normalizeString(item.name ?? item.Name ?? '');
+  const unit = normalizeString(item.unit ?? item.Unit ?? '');
   const unitNormalized = normalizeString(item.unit ?? item.Unit ?? '');
   const unit = unitNormalized ? unitNormalized.toLowerCase() : '';
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+
+  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) {
   const price = Number(item.price ?? item.Price ?? 0);
 
   if (
@@ -60,6 +63,9 @@ const normalizeLineItem = (item) => {
 
 const parseBody = async (request) => {
   try {
+    return await request.json();
+  } catch (error) {
+    return null;
     const initial = await request.json();
 
     if (typeof initial === 'string') {
@@ -99,6 +105,8 @@ const buildMergedItems = (lineItems) => {
       existing.price += item.price;
       existing.price = Number(existing.price.toFixed(10));
     } else {
+      const { name, unit, quantity } = item;
+      merged.set(key, { name, unit, quantity });
       const { name, unit, quantity, price } = item;
       merged.set(key, { name, unit, quantity, price });
     }
@@ -126,10 +134,7 @@ const validatePayload = (body) => {
   if (!isObject(body)) {
     return 'Body must be a JSON object.';
   }
-
-  if (!Array.isArray(body.recipes)) {
-    return 'Body must include a "recipes" array.';
-  }
+@@ -83,71 +133,98 @@ const validatePayload = (body) => {
 
   return null;
 };
@@ -179,10 +184,12 @@ export default async function handler(request) {
       normalizedItems.push(normalized);
     }
 
+    recipes.push({
     const recipeRecord = {
       recipe_id: recipeId,
       title,
       line_items: normalizedItems,
+    });
     };
 
     if (description) {
@@ -198,6 +205,7 @@ export default async function handler(request) {
     recipeId += 1;
   }
 
+  const recipesClean = recipes.map(({ recipe_id, title }) => ({ recipe_id, title }));
   const recipesClean = recipes.map(({ recipe_id, title, description, instructions }) => {
     const recipeSummary = { recipe_id, title };
 
