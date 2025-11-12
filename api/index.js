@@ -1,39 +1,41 @@
-// api/index.js
 export const config = { runtime: 'edge' };
 
-const jsonHeaders = { 'content-type': 'application/json; charset=utf-8' };
+const jsonHeaders = {
+  'content-type': 'application/json; charset=utf-8',
+};
+
 const METHOD_NOT_ALLOWED = 405;
 const UNPROCESSABLE_ENTITY = 422;
 
-/* ------------------------------------------------------------------ */
-/* Helpers                                                            */
-/* ------------------------------------------------------------------ */
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const normalizeString = (v) => (typeof v === 'string' ? v.trim() : '');
-const toNumber = (v, fallback = NaN) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
+/* ----------------------------- Helpers ----------------------------- */
+const isObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/* --- Extractors ---------------------------------------------------- */
+const normalizeString = (value) =>
+  typeof value === 'string' ? value.trim() : '';
+
 const pickTitle = (recipe) =>
   normalizeString(recipe.title ?? recipe.Title ?? '');
 
 const pickDescription = (recipe) => {
-  const d = normalizeString(recipe.description ?? recipe.Description ?? '');
-  return d || null;
+  const description = normalizeString(
+    recipe.description ?? recipe.Description ?? ''
+  );
+  return description || null;
 };
 
 const pickInstructions = (recipe) => {
-  const raw = recipe.instructions ?? recipe.Instructions ?? null;
+  const instructions = recipe.instructions ?? recipe.Instructions ?? null;
 
-  if (Array.isArray(raw)) {
-    const steps = raw.map((s) => normalizeString(s)).filter(Boolean);
+  if (Array.isArray(instructions)) {
+    const steps = instructions
+      .map((s) => normalizeString(s))
+      .filter(Boolean);
     return steps.length ? steps : null;
   }
 
-  const s = normalizeString(raw);
-  return s || null;
+  const normalized = normalizeString(instructions);
+  return normalized || null;
 };
 
 const pickShoppingTitle = (body) =>
@@ -45,40 +47,71 @@ const pickShoppingTitle = (body) =>
       ''
   );
 
-/* --- Normalize a single line item ---------------------------------- */
-/* Only "name" is mandatory                                           */
+/* ---------------------- Normalize Line Items ---------------------- */
 const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
   const name = normalizeString(item.name ?? item.Name ?? '');
-  if (!name) return null;
+  const unit = normalizeString(item.unit ?? item.Unit ?? '').toLowerCase();
+  const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+  const price = Number(item.price ?? item.Price ?? 0);
 
-  const unitRaw = normalizeString(item.unit ?? item.Unit ?? '');
-  const unit = unitRaw ? unitRaw.toLowerCase() : '';
+  if (
+    !name ||
+    Number.isNaN(quantity) ||
+    !Number.isFinite(quantity) ||
+    Number.isNaN(price) ||
+    !Number.isFinite(price)
+  ) {
+    return null;
+  }
 
-  const quantity = toNumber(item.quantity ?? item.Quantity);
-  const price = toNumber(item.price ?? item.Price);
-
-  return { name, unit, quantity, price };
+  return {
+    name,
+    unit,
+    quantity,
+    price,
+  };
 };
 
-/* --- Merge flat line items ----------------------------------------- */
-const buildMergedItems = (lineItemsFlat) => {
-  const merged = new Map();
+/* ----------------------------- Body Parser ----------------------------- */
+const parseBody = async (request) => {
+  try {
+    const initial = await request.json();
 
-  for (const li of lineItemsFlat) {
-    const key = `${li.name.toLowerCase()}::${li.unit.toLowerCase()}`;
-
-    if (!merged.has(key)) {
-      merged.set(key, { name: li.name, unit: li.unit, quantity: 0, price: 0 });
+    if (typeof initial === 'string') {
+      return JSON.parse(initial);
     }
 
-    const m = merged.get(key);
+    return initial;
+  } catch {
+    try {
+      const rawText = await request.text();
+      if (!rawText) return null;
 
-    if (Number.isFinite(li.quantity)) m.quantity += li.quantity;
-    if (Number.isFinite(li.price)) m.price += li.price;
+      const parsed = JSON.parse(rawText);
+      return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+    } catch {
+      return null;
+    }
+  }
+};
 
-    m.price = Math.round(m.price * 100) / 100;
+/* --------------------------- Builders --------------------------- */
+const buildMergedItems = (lineItems) => {
+  const merged = new Map();
+
+  for (const item of lineItems) {
+    const key = `${item.name.toLowerCase()}::${item.unit.toLowerCase()}`;
+    if (merged.has(key)) {
+      const existing = merged.get(key);
+      existing.quantity += item.quantity;
+      existing.price += item.price;
+      existing.price = Number(existing.price.toFixed(10));
+    } else {
+      const { name, unit, quantity, price } = item;
+      merged.set(key, { name, unit, quantity, price });
+    }
   }
 
   return Array.from(merged.values()).sort((a, b) =>
@@ -86,58 +119,47 @@ const buildMergedItems = (lineItemsFlat) => {
   );
 };
 
-/* --- Flatten recipes → line items ---------------------------------- */
 const buildLineItemsFlat = (recipes) => {
-  const out = [];
-  for (const r of recipes) {
-    for (const item of r.line_items) {
-      out.push({ recipe_id: r.recipe_id, ...item });
-    }
-  }
-  return out;
+  const flat = [];
+
+  recipes.forEach((recipe) => {
+    recipe.line_items.forEach((item) => {
+      flat.push({
+        recipe_id: recipe.recipe_id,
+        ...item,
+      });
+    });
+  });
+
+  return flat;
 };
 
-/* --- Validate basic payload ---------------------------------------- */
 const validatePayload = (body) => {
-  if (!isObject(body)) return 'Body must be a JSON object.';
-  if (!Array.isArray(body.recipes) || body.recipes.length === 0) {
-    return '`recipes` must be a non-empty array.';
+  if (!isObject(body)) {
+    return 'Body must be a JSON object.';
   }
+
+  if (!Array.isArray(body.recipes) || body.recipes.length === 0) {
+    return 'Missing or invalid "recipes" array.';
+  }
+
   return null;
 };
 
-/* --- Parse JSON & double-encoded JSON ------------------------------ */
-const parseBody = async (request) => {
-  try {
-    const parsed = await request.json();
-    if (typeof parsed === 'string') return JSON.parse(parsed);
-    return parsed;
-  } catch {
-    try {
-      const raw = await request.text();
-      if (!raw) return null;
-      const first = JSON.parse(raw);
-      return typeof first === 'string' ? JSON.parse(first) : first;
-    } catch {
-      return null;
-    }
-  }
-};
-
-/* ------------------------------------------------------------------ */
-/* Handler                                                            */
-/* ------------------------------------------------------------------ */
+/* ---------------------------- Handler ---------------------------- */
 export default async function handler(request) {
   if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Only POST requests are supported.' }), {
-      status: METHOD_NOT_ALLOWED,
-      headers: jsonHeaders,
-    });
+    return new Response(
+      JSON.stringify({ error: 'Only POST requests are supported.' }),
+      {
+        status: METHOD_NOT_ALLOWED,
+        headers: jsonHeaders,
+      }
+    );
   }
 
   const body = await parseBody(request);
   const validationError = validatePayload(body);
-
   if (validationError) {
     return new Response(JSON.stringify({ error: validationError }), {
       status: UNPROCESSABLE_ENTITY,
@@ -147,31 +169,31 @@ export default async function handler(request) {
 
   const shoppingListTitle = pickShoppingTitle(body);
 
-  /* Build normalized recipes */
+  let recipeId = 1;
   const recipes = [];
-  let recipeIdSeq = 1;
 
-  for (const rawRecipe of body.recipes) {
-    if (!isObject(rawRecipe)) continue;
+  for (const recipe of body.recipes) {
+    if (!isObject(recipe)) continue;
 
-    const title = pickTitle(rawRecipe);
+    const title = pickTitle(recipe);
     if (!title) continue;
 
-    const description = pickDescription(rawRecipe);
-    const instructions = pickInstructions(rawRecipe);
+    const description = pickDescription(recipe);
+    const instructions = pickInstructions(recipe);
+    const normalizedItems = [];
 
-    const rawItems = Array.isArray(rawRecipe.line_items ?? rawRecipe.ingredients)
-      ? (rawRecipe.line_items ?? rawRecipe.ingredients)
+    const items = Array.isArray(recipe.line_items ?? recipe.ingredients)
+      ? recipe.line_items ?? recipe.ingredients
       : [];
 
-    const normalizedItems = [];
-    for (const item of rawItems) {
-      const norm = normalizeLineItem(item);
-      if (norm) normalizedItems.push(norm);
+    for (const item of items) {
+      const normalized = normalizeLineItem(item);
+      if (!normalized) continue;
+      normalizedItems.push(normalized);
     }
 
     const recipeRecord = {
-      recipe_id: recipeIdSeq++,
+      recipe_id: recipeId,
       title,
       line_items: normalizedItems,
     };
@@ -180,26 +202,26 @@ export default async function handler(request) {
     if (instructions) recipeRecord.instructions = instructions;
 
     recipes.push(recipeRecord);
+    recipeId += 1;
   }
 
-  /* Clean summary format */
-  const recipes_clean = recipes.map((r) => {
-    const s = { recipe_id: r.recipe_id, title: r.title };
-    if (r.description) s.description = r.description;
-    if (r.instructions) s.instructions = r.instructions;
-    return s;
-  });
+  const recipesClean = recipes.map(
+    ({ recipe_id, title, description, instructions }) => {
+      const summary = { recipe_id, title };
+      if (description) summary.description = description;
+      if (instructions) summary.instructions = instructions;
+      return summary;
+    }
+  );
 
-  /* Build final flat + merged lists */
-  const line_items_flat = buildLineItemsFlat(recipes);
-  const shopping_items_merged = buildMergedItems(line_items_flat);
+  const lineItemsFlat = buildLineItemsFlat(recipes);
+  const shoppingItemsMerged = buildMergedItems(lineItemsFlat);
 
-  /* Final payload */
   const responsePayload = {
     shopping_list_title: shoppingListTitle,
-    recipes_clean,
-    line_items_flat,
-    shopping_items_merged,
+    recipes_clean: recipesClean,
+    line_items_flat: lineItemsFlat,
+    shopping_items_merged: shoppingItemsMerged,
   };
 
   return new Response(JSON.stringify(responsePayload), {
