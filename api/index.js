@@ -64,7 +64,7 @@ const normalizeLineItem = (item) => {
 
   if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) return null;
 
-  return {
+  const normalized = {
     name,
     quantity,
     'estimated pricing': estimated_pricing,
@@ -72,6 +72,12 @@ const normalizeLineItem = (item) => {
     Category,
     filters,
   };
+
+  if (category) {
+    normalized.category = category;
+  }
+
+  return normalized;
 };
 
 /* ----------------------------- Body Parser ----------------------------- */
