@@ -7,56 +7,70 @@ const jsonHeaders = {
 const METHOD_NOT_ALLOWED = 405;
 const UNPROCESSABLE_ENTITY = 422;
 
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+/* ----------------------------- Helpers ----------------------------- */
+const isObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const normalizeString = (value) =>
   typeof value === 'string' ? value.trim() : '';
 
-const pickTitle = (recipe) => normalizeString(recipe.title ?? recipe.Title ?? '');
+const pickTitle = (recipe) =>
+  normalizeString(recipe.title ?? recipe.Title ?? '');
+
 const pickDescription = (recipe) => {
-  const description = normalizeString(recipe.description ?? recipe.Description ?? '');
+  const description = normalizeString(
+    recipe.description ?? recipe.Description ?? ''
+  );
   return description || null;
 };
+
 const pickInstructions = (recipe) => {
   const instructions = recipe.instructions ?? recipe.Instructions ?? null;
 
   if (Array.isArray(instructions)) {
-    const steps = instructions.map((step) => normalizeString(step)).filter(Boolean);
-    return steps.length > 0 ? steps : null;
+    const steps = instructions
+      .map((s) => normalizeString(s))
+      .filter(Boolean);
+    return steps.length ? steps : null;
   }
 
   const normalized = normalizeString(instructions);
   return normalized || null;
 };
-const pickShoppingTitle = (body) =>
-  normalizeString(body?.shopping_title ?? body?.shoppingTitle ?? body?.title ?? body?.Title ?? '');
 
+const pickShoppingTitle = (body) =>
+  normalizeString(
+    body?.shopping_title ??
+      body?.shoppingTitle ??
+      body?.title ??
+      body?.Title ??
+      ''
+  );
+
+/* ---------------------- Normalize Line Items ---------------------- */
 const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
   const name = normalizeString(item.name ?? item.Name ?? '');
-  const unitNormalized = normalizeString(item.unit ?? item.Unit ?? '');
-  const unit = unitNormalized ? unitNormalized.toLowerCase() : '';
+  const unit = normalizeString(item.unit ?? item.Unit ?? '').toLowerCase();
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
-  const priceSource = item.price ?? item.Price ?? item.estimated_price ?? item.estimatedPrice ?? 0;
-  const price = Number(priceSource);
-  const category = normalizeString(item.category ?? item.Category ?? '');
+  const estimated_pricing = Number(
+    item['estimated pricing'] ?? item.estimated_pricing ?? item.Price ?? 0
+  );
+  const Category = normalizeString(item.Category ?? item.category ?? '');
+  const filters = isObject(item.filters)
+    ? item.filters
+    : { health_filters: [] };
 
-  if (
-    !name ||
-    Number.isNaN(quantity) ||
-    !Number.isFinite(quantity) ||
-    Number.isNaN(price) ||
-    !Number.isFinite(price)
-  ) {
-    return null;
-  }
+  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) return null;
 
   const normalized = {
     name,
-    unit,
     quantity,
-    price,
+    'estimated pricing': estimated_pricing,
+    unit,
+    Category,
+    filters,
   };
 
   if (category) {
@@ -66,6 +80,7 @@ const normalizeLineItem = (item) => {
   return normalized;
 };
 
+/* ----------------------------- Body Parser ----------------------------- */
 const parseBody = async (request) => {
   try {
     const initial = await request.json();
@@ -75,27 +90,20 @@ const parseBody = async (request) => {
     }
 
     return initial;
-  } catch (jsonError) {
+  } catch {
     try {
       const rawText = await request.text();
-
-      if (!rawText) {
-        return null;
-      }
+      if (!rawText) return null;
 
       const parsed = JSON.parse(rawText);
-
-      if (typeof parsed === 'string') {
-        return JSON.parse(parsed);
-      }
-
-      return parsed;
-    } catch (textError) {
+      return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+    } catch {
       return null;
     }
   }
 };
 
+/* --------------------------- Builders --------------------------- */
 const buildMergedItems = (lineItems) => {
   const merged = new Map();
 
@@ -104,24 +112,18 @@ const buildMergedItems = (lineItems) => {
     if (merged.has(key)) {
       const existing = merged.get(key);
       existing.quantity += item.quantity;
-      existing.price += item.price;
-      if (!existing.category && item.category) {
-        existing.category = item.category;
-      }
-      existing.price = Number(existing.price.toFixed(10));
+      existing['estimated pricing'] += item['estimated pricing'];
+      existing['estimated pricing'] = Number(
+        existing['estimated pricing'].toFixed(10)
+      );
     } else {
-      const { name, unit, quantity, price, category } = item;
-      const base = { name, unit, quantity, price };
-
-      if (category) {
-        base.category = category;
-      }
-
-      merged.set(key, base);
+      merged.set(key, { ...item });
     }
   }
 
-  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(merged.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 };
 
 const buildLineItemsFlat = (recipes) => {
@@ -144,13 +146,14 @@ const validatePayload = (body) => {
     return 'Body must be a JSON object.';
   }
 
-  if (!Array.isArray(body.recipes)) {
-    return 'Body must include a "recipes" array.';
+  if (!Array.isArray(body.recipes) || body.recipes.length === 0) {
+    return 'Missing or invalid "recipes" array.';
   }
 
   return null;
 };
 
+/* ---------------------------- Handler ---------------------------- */
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return new Response(
@@ -158,12 +161,11 @@ export default async function handler(request) {
       {
         status: METHOD_NOT_ALLOWED,
         headers: jsonHeaders,
-      },
+      }
     );
   }
 
   const body = await parseBody(request);
-
   const validationError = validatePayload(body);
   if (validationError) {
     return new Response(JSON.stringify({ error: validationError }), {
@@ -176,6 +178,7 @@ export default async function handler(request) {
 
   let recipeId = 1;
   const recipes = [];
+
   for (const recipe of body.recipes) {
     if (!isObject(recipe)) continue;
 
@@ -202,35 +205,23 @@ export default async function handler(request) {
       line_items: normalizedItems,
     };
 
-    if (description) {
-      recipeRecord.description = description;
-    }
-
-    if (instructions) {
-      recipeRecord.instructions = instructions;
-    }
+    if (description) recipeRecord.description = description;
+    if (instructions) recipeRecord.instructions = instructions;
 
     recipes.push(recipeRecord);
-
     recipeId += 1;
   }
 
-  const recipesClean = recipes.map(({ recipe_id, title, description, instructions }) => {
-    const recipeSummary = { recipe_id, title };
-
-    if (description) {
-      recipeSummary.description = description;
+  const recipesClean = recipes.map(
+    ({ recipe_id, title, description, instructions }) => {
+      const summary = { recipe_id, title };
+      if (description) summary.description = description;
+      if (instructions) summary.instructions = instructions;
+      return summary;
     }
-
-    if (instructions) {
-      recipeSummary.instructions = instructions;
-    }
-
-    return recipeSummary;
-  });
+  );
 
   const lineItemsFlat = buildLineItemsFlat(recipes);
-
   const shoppingItemsMerged = buildMergedItems(lineItemsFlat);
 
   const responsePayload = {
