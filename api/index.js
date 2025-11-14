@@ -13,30 +13,86 @@ const normalizeString = (value) =>
   typeof value === 'string' ? value.trim() : '';
 
 const pickTitle = (recipe) => normalizeString(recipe.title ?? recipe.Title ?? '');
+const pickDescription = (recipe) => {
+  const description = normalizeString(recipe.description ?? recipe.Description ?? '');
+  return description || null;
+};
+const pickInstructions = (recipe) => {
+  const instructions = recipe.instructions ?? recipe.Instructions ?? null;
+
+  if (Array.isArray(instructions)) {
+    const steps = instructions.map((step) => normalizeString(step)).filter(Boolean);
+    return steps.length > 0 ? steps : null;
+  }
+
+  const normalized = normalizeString(instructions);
+  return normalized || null;
+};
+const pickShoppingTitle = (body) =>
+  normalizeString(body?.shopping_title ?? body?.shoppingTitle ?? body?.title ?? body?.Title ?? '');
 
 const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
   const name = normalizeString(item.name ?? item.Name ?? '');
-  const unit = normalizeString(item.unit ?? item.Unit ?? '');
+  const unitNormalized = normalizeString(item.unit ?? item.Unit ?? '');
+  const unit = unitNormalized ? unitNormalized.toLowerCase() : '';
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
+  const priceSource = item.price ?? item.Price ?? item.estimated_price ?? item.estimatedPrice ?? 0;
+  const price = Number(priceSource);
+  const category = normalizeString(item.category ?? item.Category ?? '');
 
-  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) {
+  if (
+    !name ||
+    Number.isNaN(quantity) ||
+    !Number.isFinite(quantity) ||
+    Number.isNaN(price) ||
+    !Number.isFinite(price)
+  ) {
     return null;
   }
 
-  return {
+  const normalized = {
     name,
     unit,
     quantity,
+    price,
   };
+
+  if (category) {
+    normalized.category = category;
+  }
+
+  return normalized;
 };
 
 const parseBody = async (request) => {
   try {
-    return await request.json();
-  } catch (error) {
-    return null;
+    const initial = await request.json();
+
+    if (typeof initial === 'string') {
+      return JSON.parse(initial);
+    }
+
+    return initial;
+  } catch (jsonError) {
+    try {
+      const rawText = await request.text();
+
+      if (!rawText) {
+        return null;
+      }
+
+      const parsed = JSON.parse(rawText);
+
+      if (typeof parsed === 'string') {
+        return JSON.parse(parsed);
+      }
+
+      return parsed;
+    } catch (textError) {
+      return null;
+    }
   }
 };
 
@@ -48,9 +104,20 @@ const buildMergedItems = (lineItems) => {
     if (merged.has(key)) {
       const existing = merged.get(key);
       existing.quantity += item.quantity;
+      existing.price += item.price;
+      if (!existing.category && item.category) {
+        existing.category = item.category;
+      }
+      existing.price = Number(existing.price.toFixed(10));
     } else {
-      const { name, unit, quantity } = item;
-      merged.set(key, { name, unit, quantity });
+      const { name, unit, quantity, price, category } = item;
+      const base = { name, unit, quantity, price };
+
+      if (category) {
+        base.category = category;
+      }
+
+      merged.set(key, base);
     }
   }
 
@@ -105,6 +172,8 @@ export default async function handler(request) {
     });
   }
 
+  const shoppingListTitle = pickShoppingTitle(body);
+
   let recipeId = 1;
   const recipes = [];
   for (const recipe of body.recipes) {
@@ -113,6 +182,8 @@ export default async function handler(request) {
     const title = pickTitle(recipe);
     if (!title) continue;
 
+    const description = pickDescription(recipe);
+    const instructions = pickInstructions(recipe);
     const normalizedItems = [];
 
     const items = Array.isArray(recipe.line_items ?? recipe.ingredients)
@@ -125,22 +196,45 @@ export default async function handler(request) {
       normalizedItems.push(normalized);
     }
 
-    recipes.push({
+    const recipeRecord = {
       recipe_id: recipeId,
       title,
       line_items: normalizedItems,
-    });
+    };
+
+    if (description) {
+      recipeRecord.description = description;
+    }
+
+    if (instructions) {
+      recipeRecord.instructions = instructions;
+    }
+
+    recipes.push(recipeRecord);
 
     recipeId += 1;
   }
 
-  const recipesClean = recipes.map(({ recipe_id, title }) => ({ recipe_id, title }));
+  const recipesClean = recipes.map(({ recipe_id, title, description, instructions }) => {
+    const recipeSummary = { recipe_id, title };
+
+    if (description) {
+      recipeSummary.description = description;
+    }
+
+    if (instructions) {
+      recipeSummary.instructions = instructions;
+    }
+
+    return recipeSummary;
+  });
 
   const lineItemsFlat = buildLineItemsFlat(recipes);
 
   const shoppingItemsMerged = buildMergedItems(lineItemsFlat);
 
   const responsePayload = {
+    shopping_list_title: shoppingListTitle,
     recipes_clean: recipesClean,
     line_items_flat: lineItemsFlat,
     shopping_items_merged: shoppingItemsMerged,
