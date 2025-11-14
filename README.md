@@ -1,6 +1,6 @@
 # Wellcart JS API
 
-A lightweight Vercel Edge Function that normalizes a meal plan JSON payload into:
+A lightweight Vercel Edge Function that normalizes a meal plan JSON payload into a bubble app:
 
 - `shopping_list_title`: the normalized plan title to display alongside shopping data
 - `recipes_clean`: an array of recipes with assigned `recipe_id`, optional `description`, and optional `instructions` values
