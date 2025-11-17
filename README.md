@@ -1,6 +1,6 @@
 # Wellcart JS API
 
-A lightweight Vercel Edge Function that normalizes a meal plan JSON payload into:
+A lightweight Vercel Edge Function that normalizes a meal plan JSON payload into a bubble app:
 
 - `shopping_list_title`: the normalized plan title to display alongside shopping data
 - `recipes_clean`: an array of recipes with assigned `recipe_id`, optional `description`, and optional `instructions` values
@@ -125,10 +125,10 @@ Send a `POST` request containing a `recipes` array. Each recipe should include a
 - `422` – Returned when the payload cannot be parsed or does not contain a `recipes` array.
 - `405` – Returned when a method other than `POST` is used.
 
-## Bubble integration
+## integration
 
-1. Use the Bubble API Connector to send the meal plan JSON to the deployed endpoint.
-2. Schedule a backend workflow on the returned `recipes_clean` list to create `Recipe` things while storing the `recipe_id` as `external_recipe_id`.
-3. Schedule a backend workflow on the `line_items_flat` list to create `Line Item` things. Match each item to a `Recipe` using the shared `recipe_id`/`external_recipe_id` values.
-4. Display recipes in a repeating group and nest a repeating group filtered by the linked recipe to show its line items.
-5. Use `shopping_items_merged` to drive a deduplicated shopping cart or Instacart UI.
+1. Send the meal plan JSON to the deployed endpoint.
+2. Schedule a backend function on the returned `recipes_clean` list to create `Recipe` object while storing the `recipe_id` as `external_recipe_id`.
+3. Schedule a backend function on the `line_items_flat` list to create `Line Item` object. Match each item to a `Recipe` using the shared `recipe_id`/`external_recipe_id` values.
+4. Display recipes in a list and nest a list filtered by the linked recipe to show its line items.
+5. Use `shopping_items_merged` to drive a deduplicated shopping cart or Instacart API POST Endpoint.

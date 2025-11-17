@@ -7,7 +7,9 @@ const jsonHeaders = {
 const METHOD_NOT_ALLOWED = 405;
 const UNPROCESSABLE_ENTITY = 422;
 
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+/* ----------------------------- Helpers ----------------------------- */
+const isObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const normalizeString = (value) =>
   typeof value === 'string' ? value.trim() : '';
@@ -31,6 +33,37 @@ const pickInstructions = (recipe) => {
 const pickShoppingTitle = (body) =>
   normalizeString(body?.shopping_title ?? body?.shoppingTitle ?? body?.title ?? body?.Title ?? '');
 
+const pickDescription = (recipe) => {
+  const description = normalizeString(
+    recipe.description ?? recipe.Description ?? ''
+  );
+  return description || null;
+};
+
+const pickInstructions = (recipe) => {
+  const instructions = recipe.instructions ?? recipe.Instructions ?? null;
+
+  if (Array.isArray(instructions)) {
+    const steps = instructions
+      .map((s) => normalizeString(s))
+      .filter(Boolean);
+    return steps.length ? steps : null;
+  }
+
+  const normalized = normalizeString(instructions);
+  return normalized || null;
+};
+
+const pickShoppingTitle = (body) =>
+  normalizeString(
+    body?.shopping_title ??
+      body?.shoppingTitle ??
+      body?.title ??
+      body?.Title ??
+      ''
+  );
+
+/* ---------------------- Normalize Line Items ---------------------- */
 const normalizeLineItem = (item) => {
   if (!isObject(item)) return null;
 
@@ -54,7 +87,6 @@ const normalizeLineItem = (item) => {
 
   const normalized = {
     name,
-    unit,
     quantity,
     price,
   };
@@ -81,6 +113,7 @@ const parseProvidedBody = (rawValue) => {
   return rawValue;
 };
 
+/* ----------------------------- Body Parser ----------------------------- */
 const parseBody = async (request) => {
   // Support Node/Next API requests where the body is already parsed
   if (Object.prototype.hasOwnProperty.call(request ?? {}, 'body')) {
@@ -111,6 +144,7 @@ const parseBody = async (request) => {
   return null;
 };
 
+/* --------------------------- Builders --------------------------- */
 const buildMergedItems = (lineItems) => {
   const merged = new Map();
 
@@ -136,7 +170,9 @@ const buildMergedItems = (lineItems) => {
     }
   }
 
-  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(merged.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 };
 
 const buildLineItemsFlat = (recipes) => {
@@ -159,13 +195,14 @@ const validatePayload = (body) => {
     return 'Body must be a JSON object.';
   }
 
-  if (!Array.isArray(body.recipes)) {
-    return 'Body must include a "recipes" array.';
+  if (!Array.isArray(body.recipes) || body.recipes.length === 0) {
+    return 'Missing or invalid "recipes" array.';
   }
 
   return null;
 };
 
+/* ---------------------------- Handler ---------------------------- */
 export default async function handler(request) {
   if (request.method !== 'POST') {
     return new Response(
@@ -173,12 +210,11 @@ export default async function handler(request) {
       {
         status: METHOD_NOT_ALLOWED,
         headers: jsonHeaders,
-      },
+      }
     );
   }
 
   const body = await parseBody(request);
-
   const validationError = validatePayload(body);
   if (validationError) {
     return new Response(JSON.stringify({ error: validationError }), {
@@ -191,6 +227,7 @@ export default async function handler(request) {
 
   let recipeId = 1;
   const recipes = [];
+
   for (const recipe of body.recipes) {
     if (!isObject(recipe)) continue;
 
@@ -227,6 +264,10 @@ export default async function handler(request) {
 
     recipes.push(recipeRecord);
 
+    if (description) recipeRecord.description = description;
+    if (instructions) recipeRecord.instructions = instructions;
+
+    recipes.push(recipeRecord);
     recipeId += 1;
   }
 
@@ -245,7 +286,6 @@ export default async function handler(request) {
   });
 
   const lineItemsFlat = buildLineItemsFlat(recipes);
-
   const shoppingItemsMerged = buildMergedItems(lineItemsFlat);
 
   const responsePayload = {
