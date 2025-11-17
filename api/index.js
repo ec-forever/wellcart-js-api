@@ -55,29 +55,31 @@ const normalizeLineItem = (item) => {
   const unit = normalizeString(item.unit ?? item.Unit ?? '').toLowerCase();
   const quantity = Number(item.quantity ?? item.Quantity ?? 0);
   const estimated_pricing = Number(
-    item['estimated pricing'] ?? item.estimated_pricing ?? item.Price ?? 0
+    item['estimated pricing'] ??
+      item.estimated_pricing ??
+      item.Price ??
+      0
   );
-  const Category = normalizeString(item.Category ?? item.category ?? '');
+
+  const category = normalizeString(item.Category ?? item.category ?? '');
+
   const filters = isObject(item.filters)
     ? item.filters
     : { health_filters: [] };
 
-  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) return null;
+  // Do not allow invalid entries
+  if (!name || Number.isNaN(quantity) || !Number.isFinite(quantity)) {
+    return null;
+  }
 
-  const normalized = {
+  return {
     name,
     quantity,
     'estimated pricing': estimated_pricing,
     unit,
-    Category,
+    category,
     filters,
   };
-
-  if (category) {
-    normalized.category = category;
-  }
-
-  return normalized;
 };
 
 /* ----------------------------- Body Parser ----------------------------- */
@@ -167,6 +169,7 @@ export default async function handler(request) {
 
   const body = await parseBody(request);
   const validationError = validatePayload(body);
+
   if (validationError) {
     return new Response(JSON.stringify({ error: validationError }), {
       status: UNPROCESSABLE_ENTITY,
