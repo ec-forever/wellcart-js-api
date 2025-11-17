@@ -15,8 +15,15 @@ test('normalizes shopping payload with description and instructions metadata', a
           'Toss with chopped vegetables and dressing.  ',
         ],
         line_items: [
-          { name: 'Chickpeas', quantity: '2', unit: 'cups', price: '1.5' },
-          { Name: 'Lemon', Quantity: 1, Unit: 'EA', Price: 0.89 },
+          {
+            name: 'Chickpeas',
+            quantity: '2',
+            unit: 'cups',
+            price: '1.5',
+            category: 'Pantry',
+            estimated_price: '1.7',
+          },
+          { Name: 'Lemon', Quantity: 1, Unit: 'EA', Price: 0.89, Category: 'Produce' },
         ],
       },
       {
@@ -24,7 +31,7 @@ test('normalizes shopping payload with description and instructions metadata', a
         Description: 'Spiced chicken with garlic sauce.',
         Instructions: '  Roast chicken, slice, and assemble in warm pitas.  ',
         ingredients: [
-          { name: 'Lemon', quantity: 1, unit: 'ea', price: 0.79 },
+          { name: 'Lemon', quantity: 1, unit: 'ea', estimatedPrice: 0.9 },
         ],
       },
     ],
@@ -61,14 +68,46 @@ test('normalizes shopping payload with description and instructions metadata', a
   ]);
 
   assert.deepEqual(body.line_items_flat, [
-    { recipe_id: 1, name: 'Chickpeas', quantity: 2, unit: 'cups', price: 1.5 },
-    { recipe_id: 1, name: 'Lemon', quantity: 1, unit: 'ea', price: 0.89 },
-    { recipe_id: 2, name: 'Lemon', quantity: 1, unit: 'ea', price: 0.79 },
+    {
+      recipe_id: 1,
+      name: 'Chickpeas',
+      quantity: 2,
+      unit: 'cups',
+      price: 1.5,
+      category: 'Pantry',
+    },
+    {
+      recipe_id: 1,
+      name: 'Lemon',
+      quantity: 1,
+      unit: 'ea',
+      price: 0.89,
+      category: 'Produce',
+    },
+    {
+      recipe_id: 2,
+      name: 'Lemon',
+      quantity: 1,
+      unit: 'ea',
+      price: 0.9,
+    },
   ]);
 
   assert.deepEqual(body.shopping_items_merged, [
-    { name: 'Chickpeas', quantity: 2, unit: 'cups', price: 1.5 },
-    { name: 'Lemon', quantity: 2, unit: 'ea', price: 1.68 },
+    {
+      name: 'Chickpeas',
+      quantity: 2,
+      unit: 'cups',
+      price: 1.5,
+      category: 'Pantry',
+    },
+    {
+      name: 'Lemon',
+      quantity: 2,
+      unit: 'ea',
+      price: 1.79,
+      category: 'Produce',
+    },
   ]);
 });
 
@@ -98,8 +137,68 @@ test('handles payload provided as a JSON string body', async () => {
     { recipe_id: 1, title: 'Test Recipe' },
   ]);
   assert.deepEqual(body.line_items_flat, [
-    { recipe_id: 1, name: 'Item', quantity: 1, unit: 'ea', price: 2.5 },
+    {
+      recipe_id: 1,
+      name: 'Item',
+      quantity: 1,
+      unit: 'ea',
+      price: 2.5,
+    },
   ]);
+});
+
+test('accepts Node/Next-style requests with a pre-parsed or string body', async () => {
+  const payload = {
+    title: 'Node Runtime',
+    recipes: [
+      {
+        title: 'Parsed Recipe',
+        line_items: [{ name: 'Thing', quantity: 2, unit: 'bag', price: 4.5, category: 'Pantry' }],
+      },
+    ],
+  };
+
+  const stringRequest = {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  };
+
+  const parsedRequest = {
+    method: 'POST',
+    body: payload,
+  };
+
+  const [stringResponse, parsedResponse] = await Promise.all([
+    handler(stringRequest),
+    handler(parsedRequest),
+  ]);
+
+  const stringBody = await stringResponse.json();
+  const parsedBody = await parsedResponse.json();
+
+  for (const body of [stringBody, parsedBody]) {
+    assert.equal(body.shopping_list_title, 'Node Runtime');
+    assert.deepEqual(body.recipes_clean, [{ recipe_id: 1, title: 'Parsed Recipe' }]);
+    assert.deepEqual(body.line_items_flat, [
+      {
+        recipe_id: 1,
+        name: 'Thing',
+        quantity: 2,
+        unit: 'bag',
+        price: 4.5,
+        category: 'Pantry',
+      },
+    ]);
+    assert.deepEqual(body.shopping_items_merged, [
+      {
+        name: 'Thing',
+        quantity: 2,
+        unit: 'bag',
+        price: 4.5,
+        category: 'Pantry',
+      },
+    ]);
+  }
 });
 
 test('rejects unsupported methods and invalid payloads', async () => {
